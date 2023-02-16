@@ -1,0 +1,17 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Current File",
+            "type": "python",
+            "request": "launch",
+            "program": "parking_lot/main.py",
+            "args": ["--data", "parking_lot/data/coordinates_1.yml", "--video", "parking_lot/videos/parking_lot_1.mp4", "--start-frame", "400"],
+            "console": "integratedTerminal",
+            "justMyCode": true
+        }
+    ]
+}
