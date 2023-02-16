@@ -3,6 +3,8 @@ import numpy as np
 import logging
 from drawing_utils import draw_contours
 from colors import COLOR_GREEN, COLOR_WHITE, COLOR_BLUE
+import requests
+from json import dump
 
 
 class MotionDetector:
@@ -54,6 +56,8 @@ class MotionDetector:
         statuses = [False] * len(coordinates_data)
         times = [None] * len(coordinates_data)
 
+        frame_number = 0
+        free_spaces:int = 0
         while capture.isOpened():
             result, frame = capture.read()
             if frame is None:
@@ -62,6 +66,7 @@ class MotionDetector:
             if not result:
                 raise CaptureReadError("Error reading video capture on frame %s" % str(frame))
 
+            frame_number += 1
             blurred = open_cv.GaussianBlur(frame.copy(), (5, 5), 3)
             grayed = open_cv.cvtColor(blurred, open_cv.COLOR_BGR2GRAY)
             new_frame = frame.copy()
@@ -92,6 +97,16 @@ class MotionDetector:
                 draw_contours(new_frame, coordinates, str(p["id"] + 1), COLOR_WHITE, color)
 
             open_cv.imshow(str(self.video), new_frame)
+            
+            #Wait 10 seconds and then print the number of empty spaces
+            free_spaces_in_frame = len(statuses) - statuses.count(0)
+            if free_spaces != free_spaces_in_frame:
+                free_spaces = free_spaces_in_frame
+                print(free_spaces, "spaces are empty")
+                json = {"id": 1,
+                         "ProbabilityParkingAvailable": "90.00" if free_spaces > 0 else "0.00",
+                         "free_spaces": free_spaces}
+                MotionDetector.send_my_put_request(1, json)
             k = open_cv.waitKey(1)
             if k == ord("q"):
                 break
@@ -128,6 +143,17 @@ class MotionDetector:
     @staticmethod
     def status_changed(coordinates_status, index, status):
         return status != coordinates_status[index]
+
+    @staticmethod
+    def send_my_put_request(lot_monitor_id, json):
+        MotionDetector.send_put_request(200, f"http://127.0.0.1:8000/api-auth/parking-lot-monitors/{lot_monitor_id}", json, {"Content-Type": "application/json"})
+    
+    @staticmethod
+    def send_put_request(expected_status_code,url, payload,header):
+        response = requests.put(url, headers=header, json=payload)
+        #data = dump.dump_all(response)
+        #print("\n\n--------------Request--------------------------\n",data.decode('utf-8'))
+        assert response.status_code==expected_status_code
 
 
 class CaptureReadError(Exception):
