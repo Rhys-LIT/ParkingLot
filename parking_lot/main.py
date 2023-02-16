@@ -21,7 +21,7 @@ def main():
             generator.generate()
 
     with open(data_file, "r") as data:
-        points = yaml.load(data)
+        points = yaml.full_load(data)
         detector = MotionDetector(args.video_file, points, int(start_frame))
         detector.detect_motion()
 
