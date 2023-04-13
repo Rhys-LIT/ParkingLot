@@ -5,6 +5,7 @@ from drawing_utils import draw_contours
 from colors import COLOR_GREEN, COLOR_WHITE, COLOR_BLUE
 import requests
 from json import dump
+import time
 
 
 class MotionDetector:
@@ -104,24 +105,34 @@ class MotionDetector:
             # Wait 10 seconds and then print the number of empty spaces
             free_spaces_in_frame = len(statuses) - statuses.count(0)
             if free_spaces != free_spaces_in_frame:
-                free_spaces = free_spaces_in_frame
-                print(free_spaces, "spaces are empty")
-                parking_value = free_spaces/len(statuses)
-                json = {
-                        "id": 1,
-                        "name": "Henry Street #4",
-                        "latitude": "52.663797090256100",
-                        "longitude": "-8.628752240173640",
-                        "ProbabilityParkingAvailable": parking_value,
-                        #"free_spaces": free_spaces
-                        }
-                print(json)
-                MotionDetector.send_my_put_request(1, json)
+                self.on_free_parking_spaces_changed(
+                    statuses, free_spaces_in_frame)
             k = open_cv.waitKey(1)
+
             if k == ord("q"):
                 break
+            time.sleep(0.1)  # 0.1 second
         capture.release()
         open_cv.destroyAllWindows()
+
+    def on_free_parking_spaces_changed(self, statuses, free_spaces_in_frame):
+        free_spaces = free_spaces_in_frame
+        print(free_spaces, "spaces are empty")
+        probability_parking_available = free_spaces/len(statuses)
+        parking_lot_monitor_id = 1
+        json = {
+            "id": parking_lot_monitor_id,
+            "name": "Henry Street #4",
+            "latitude": "52.663797090256100",
+            "longitude": "-8.628752240173640",
+            "probabilityParkingAvailable": probability_parking_available,
+            
+            #"image": image_base_64_encoded,
+            # "free_spaces": free_spaces
+            
+        }
+        print(json)
+        MotionDetector.send_my_put_request(parking_lot_monitor_id, json)
 
     def __apply(self, grayed, index, p):
         coordinates = self._coordinates(p)
@@ -172,9 +183,9 @@ class MotionDetector:
         """
         from requests.auth import HTTPBasicAuth
         basic_auth = HTTPBasicAuth('parkingMonitor', 'Letmein1$')
-        
-        
-        response = requests.put(url, auth=basic_auth, headers=headers, json=json)
+
+        response = requests.put(url, auth=basic_auth,
+                                headers=headers, json=json)
         #data = dump.dump_all(response)
         # print("\n\n--------------Request--------------------------\n",data.decode('utf-8'))
         assert response.status_code == expected_status_code
