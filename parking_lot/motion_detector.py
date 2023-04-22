@@ -152,6 +152,11 @@ class MotionDetector:
         probability_parking_available = free_spaces/len(statuses)
 
         parking_monitor_data = self.parking_monitor_data
+        json = self.build_json(parking_monitor_data, probability_parking_available)
+        print(json)
+        MotionDetector.send_my_put_request(parking_monitor_data, json)
+
+    def build_json(self, parking_monitor_data: ParkingMonitorData, probability_parking_available):
         json = {
             "id": parking_monitor_data.id,
             "name": parking_monitor_data.name,
@@ -161,8 +166,8 @@ class MotionDetector:
             # "image": image_base_64_encoded,
             # "free_spaces": free_spaces
         }
-        print(json)
-        MotionDetector.send_my_put_request(parking_monitor_data, json)
+        
+        return json
 
     def __apply(self, grayed, index, p):
         coordinates = self._coordinates(p)
