@@ -1,24 +1,53 @@
-import cv2 as open_cv
-import numpy as np
-import logging
-from drawing_utils import draw_contours
 from colors import COLOR_GREEN, COLOR_WHITE, COLOR_BLUE
-import requests
+from configparser import ConfigParser
+from drawing_utils import draw_contours
 from json import dump
+from requests.auth import HTTPBasicAuth
+import cv2 as open_cv
+import logging
+import numpy as np
+import requests
 import time
+
+SECONDS_TIME_DELAY = .02
+
+
+class ParkingMonitorData:
+    """This class represents the data of a parking monitor"""
+
+    def __init__(self, config_filepath: str = "config.ini"):
+        """Constructor of the ParkingMonitorData class
+
+        Args:
+            config_filepath (str, optional): The path to the config file to load the data from. Defaults to "config.ini".
+        """
+        config_parser: ConfigParser = ConfigParser()
+
+        config_parser.read(config_filepath)
+
+        self.id = config_parser["ParkingLotMonitor"]["Id"]
+        self.name = config_parser["ParkingLotMonitor"]["Name"]
+        self.latitude = config_parser["ParkingLotMonitor"]["Latitude"]
+        self.longitude = config_parser["ParkingLotMonitor"]["Longitude"]
+
+        self.app_token = config_parser["App"]["Token"]
+        self.app_username = config_parser["App"]["Username"]
+        self.app_password = config_parser["App"]["Password"]
+        self.server_url = config_parser["App"]["ServerUrl"]
 
 
 class MotionDetector:
     LAPLACIAN = 1.4
     DETECT_DELAY = 1
 
-    def __init__(self, video, coordinates, start_frame):
+    def __init__(self, video, coordinates, start_frame, parking_monitor_data: ParkingMonitorData):
         self.video = video
         self.coordinates_data = coordinates
         self.start_frame = start_frame
         self.contours = []
         self.bounds = []
         self.mask = []
+        self.parking_monitor_data = parking_monitor_data
 
     def detect_motion(self):
         capture = open_cv.VideoCapture(self.video)
@@ -107,11 +136,13 @@ class MotionDetector:
             if free_spaces != free_spaces_in_frame:
                 self.on_free_parking_spaces_changed(
                     statuses, free_spaces_in_frame)
+                free_spaces = free_spaces_in_frame
+
             k = open_cv.waitKey(1)
 
             if k == ord("q"):
                 break
-            time.sleep(0.1)  # 0.1 second
+            time.sleep(SECONDS_TIME_DELAY)
         capture.release()
         open_cv.destroyAllWindows()
 
@@ -119,20 +150,19 @@ class MotionDetector:
         free_spaces = free_spaces_in_frame
         print(free_spaces, "spaces are empty")
         probability_parking_available = free_spaces/len(statuses)
-        parking_lot_monitor_id = 1
+
+        parking_monitor_data = self.parking_monitor_data
         json = {
-            "id": parking_lot_monitor_id,
-            "name": "Henry Street #4",
-            "latitude": "52.663797090256100",
-            "longitude": "-8.628752240173640",
+            "id": parking_monitor_data.id,
+            "name": parking_monitor_data.name,
+            "latitude": parking_monitor_data.latitude,
+            "longitude":  parking_monitor_data.longitude,
             "probabilityParkingAvailable": probability_parking_available,
-            
-            #"image": image_base_64_encoded,
+            # "image": image_base_64_encoded,
             # "free_spaces": free_spaces
-            
         }
         print(json)
-        MotionDetector.send_my_put_request(parking_lot_monitor_id, json)
+        MotionDetector.send_my_put_request(parking_monitor_data, json)
 
     def __apply(self, grayed, index, p):
         coordinates = self._coordinates(p)
@@ -168,26 +198,21 @@ class MotionDetector:
         return status != coordinates_status[index]
 
     @staticmethod
-    def send_my_put_request(lot_monitor_id, json):
-        token = "0f412f508358b8c1156d688d1db671e5ba4f1457"
-        header = {"Authorization": "Token " + token,
+    def send_my_put_request(parking_monitor_data: ParkingMonitorData, json: dict):
+        header = {"Authorization": "Token " + parking_monitor_data.app_token,
                   "Content-Type": "application/json",
                   }
-        url = f"http://127.0.0.1:8000/api-auth/parking-lot-monitors/{lot_monitor_id}/"
+        url = f"{parking_monitor_data.server_url}/{parking_monitor_data.id}/"
         MotionDetector.send_put_request(
-            200, url,  header, json)
+            parking_monitor_data, 200, url,  header, json)
 
     @staticmethod
-    def send_put_request(expected_status_code, url, headers, json):
-        """
-        """
-        from requests.auth import HTTPBasicAuth
-        basic_auth = HTTPBasicAuth('parkingMonitor', 'Letmein1$')
-
+    def send_put_request(parking_monitor_data: ParkingMonitorData, expected_status_code, url, headers, json):
+        """Send a PUT request to the server and check the response."""
+        basic_auth = HTTPBasicAuth(
+            parking_monitor_data.app_username, parking_monitor_data.app_password)
         response = requests.put(url, auth=basic_auth,
                                 headers=headers, json=json)
-        #data = dump.dump_all(response)
-        # print("\n\n--------------Request--------------------------\n",data.decode('utf-8'))
         assert response.status_code == expected_status_code
 
 
