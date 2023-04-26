@@ -134,7 +134,7 @@ class MotionDetector:
             free_spaces_in_frame = len(statuses) - statuses.count(0)
             if free_spaces != free_spaces_in_frame:
                 MotionDetector.on_free_parking_spaces_changed(
-                    len(statuses), free_spaces_in_frame)
+                    len(statuses), free_spaces_in_frame)# TODO:Fix
                 free_spaces = free_spaces_in_frame
 
             k = open_cv.waitKey(1)
