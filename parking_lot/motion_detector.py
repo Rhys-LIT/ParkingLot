@@ -97,7 +97,6 @@ class MotionDetector:
                 raise CaptureReadError(
                     "Error reading video capture on frame %s" % str(frame))
 
-            frame_number += 1
             blurred = open_cv.GaussianBlur(frame.copy(), (5, 5), 3)
             grayed = open_cv.cvtColor(blurred, open_cv.COLOR_BGR2GRAY)
             new_frame = frame.copy()
@@ -134,8 +133,8 @@ class MotionDetector:
             # Wait 10 seconds and then print the number of empty spaces
             free_spaces_in_frame = len(statuses) - statuses.count(0)
             if free_spaces != free_spaces_in_frame:
-                self.on_free_parking_spaces_changed(
-                    statuses, free_spaces_in_frame)
+                MotionDetector.on_free_parking_spaces_changed(
+                    len(statuses), free_spaces_in_frame)
                 free_spaces = free_spaces_in_frame
 
             k = open_cv.waitKey(1)
@@ -145,29 +144,6 @@ class MotionDetector:
             time.sleep(SECONDS_TIME_DELAY)
         capture.release()
         open_cv.destroyAllWindows()
-
-    def on_free_parking_spaces_changed(self, statuses, free_spaces_in_frame):
-        free_spaces = free_spaces_in_frame
-        print(free_spaces, "spaces are empty")
-        probability_parking_available = free_spaces/len(statuses)
-
-        parking_monitor_data = self.parking_monitor_data
-        json = self.build_json(parking_monitor_data, probability_parking_available)
-        print(json)
-        MotionDetector.send_my_put_request(parking_monitor_data, json)
-
-    def build_json(self, parking_monitor_data: ParkingMonitorData, probability_parking_available):
-        json = {
-            "id": parking_monitor_data.id,
-            "name": parking_monitor_data.name,
-            "latitude": parking_monitor_data.latitude,
-            "longitude":  parking_monitor_data.longitude,
-            "probabilityParkingAvailable": probability_parking_available,
-            # "image": image_base_64_encoded,
-            # "free_spaces": free_spaces
-        }
-        
-        return json
 
     def __apply(self, grayed, index, p):
         coordinates = self._coordinates(p)
@@ -202,23 +178,92 @@ class MotionDetector:
     def status_changed(coordinates_status, index, status):
         return status != coordinates_status[index]
 
-    @staticmethod
-    def send_my_put_request(parking_monitor_data: ParkingMonitorData, json: dict):
-        header = {"Authorization": "Token " + parking_monitor_data.app_token,
-                  "Content-Type": "application/json",
-                  }
-        url = f"{parking_monitor_data.server_url}/{parking_monitor_data.id}/"
-        MotionDetector.send_put_request(
-            parking_monitor_data, 200, url,  header, json)
+    def on_free_parking_spaces_changed(self, spaces_in_frame: int, free_spaces_in_frame: float) -> None:
+        probability_parking_available = free_spaces_in_frame/spaces_in_frame
+        MotionDetector.update_server_parking_monitor_data(
+            self.parking_monitor_data, free_spaces_in_frame, probability_parking_available)
 
     @staticmethod
-    def send_put_request(parking_monitor_data: ParkingMonitorData, expected_status_code, url, headers, json):
-        """Send a PUT request to the server and check the response."""
-        basic_auth = HTTPBasicAuth(
-            parking_monitor_data.app_username, parking_monitor_data.app_password)
-        response = requests.put(url, auth=basic_auth,
-                                headers=headers, json=json)
-        assert response.status_code == expected_status_code
+    def update_server_parking_monitor_data(parking_monitor_data: ParkingMonitorData, free_spaces_in_frame: float, probability_parking_available: float) -> requests.Response:
+        """_summary_
+
+        Args:
+            parking_monitor_data (ParkingMonitorData): _description_
+            free_spaces_in_frame (float): _description_
+            probability_parking_available (float): _description_
+
+        Returns:
+            requests.Response: _description_
+        """             
+        parking_monitor_data_json: dict = MotionDetector.build_parking_monitor_data_json(
+            free_spaces_in_frame, probability_parking_available)
+        return MotionDetector.build_and_send_parking_monitor_data_put_request(parking_monitor_data, parking_monitor_data_json)
+
+    @staticmethod
+    def build_parking_monitor_data_json(parking_monitor_data: ParkingMonitorData, free_spaces_in_frame: float, probability_parking_available: float) -> dict:
+        """_summary_
+
+        Args:
+            parking_monitor_data (ParkingMonitorData): _description_
+            free_spaces_in_frame (float): _description_
+            probability_parking_available (float): _description_
+
+        Returns:
+            _type_: _description_
+        """
+        return {
+            "id": parking_monitor_data.id,
+            "name": parking_monitor_data.name,
+            "latitude": parking_monitor_data.latitude,
+            "longitude":  parking_monitor_data.longitude,
+            "probabilityParkingAvailable": probability_parking_available,
+            # "image": image_base_64_encoded,
+            # "free_spaces": free_spaces
+        }
+
+    @staticmethod
+    def build_and_send_parking_monitor_data_put_request(parking_monitor_data: ParkingMonitorData, request_json: dict) -> requests.Response:
+        """_summary_
+
+        Args:
+            parking_monitor_data (ParkingMonitorData): _description_
+            request_json (dict): _description_
+
+        Returns:
+            requests.Response: _description_
+        """
+        request_headers = {
+            "Authorization": f"Token {parking_monitor_data.app_token}",
+            "Content-Type": "application/json",
+        }
+        request_url = f"{parking_monitor_data.server_url}/{parking_monitor_data.id}/"
+        return MotionDetector.send_put_request(parking_monitor_data,
+                                               request_headers,
+                                               request_json,
+                                               request_url)
+
+    @staticmethod
+    def send_put_request(parking_monitor_data: ParkingMonitorData, request_headers: dict,
+                         request_json: dict, request_url: str) -> requests.Response:
+        """Send a PUT request to the server and return the response.
+        Args:
+            parking_monitor_data (ParkingMonitorData): Provides username and password required to build Authorization header
+            request_headers (dict): The headers to be sent with the request
+            request_json (dict): The json to be sent with the request
+            request_url (str): The url to send the request to
+
+        Returns:
+            requests.Response: The response from the server
+        """
+
+        http_basic_auth = HTTPBasicAuth(parking_monitor_data.app_username,
+                                        parking_monitor_data.app_password)
+        response = requests.put(request_url,
+                                auth=http_basic_auth,
+                                headers=request_headers,
+                                json=request_json)
+
+        return response
 
 
 class CaptureReadError(Exception):
